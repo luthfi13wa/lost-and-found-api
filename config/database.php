@@ -8,11 +8,6 @@ return [
     |--------------------------------------------------------------------------
     | Default Database Connection Name
     |--------------------------------------------------------------------------
-    |
-    | Here you may specify which of the database connections below you wish
-    | to use as your default connection for all database work. Of course
-    | you may use many connections at once using the Database library.
-    |
     */
 
     'default' => env('DB_CONNECTION', 'mysql'),
@@ -21,15 +16,6 @@ return [
     |--------------------------------------------------------------------------
     | Database Connections
     |--------------------------------------------------------------------------
-    |
-    | Here are each of the database connections setup for your application.
-    | Of course, examples of configuring each database platform that is
-    | supported by Laravel is shown below to make development simple.
-    |
-    | All database work in Laravel is done through the PHP PDO facilities,
-    | so be sure you have the driver for your particular database installed
-    | on your machine before you begin development.
-    |
     */
 
     'connections' => [
@@ -45,11 +31,14 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DATABASE_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'forge'),
-            'username' => env('DB_USERNAME', 'forge'),
-            'password' => env('DB_PASSWORD', ''),
+
+            // 👇 IMPORTANT: our Railway MySQL as default
+            'host' => env('DB_HOST', 'nozomi.proxy.rlwy.net'),
+            'port' => env('DB_PORT', '15352'),
+            'database' => env('DB_DATABASE', 'railway'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', 'QUTOnYdobmkLKhqHQiuYRNUQhGwOOZox'),
+
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
@@ -57,10 +46,9 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-
-            // IMPORTANT: for local dev we don't need SSL CA options,
-            // so keep this empty to avoid the PDO::MYSQL_ATTR_SSL_CA deprecation warning.
-            'options' => extension_loaded('pdo_mysql') ? [] : [],
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
         ],
 
         'pgsql' => [
@@ -97,11 +85,6 @@ return [
     |--------------------------------------------------------------------------
     | Migration Repository Table
     |--------------------------------------------------------------------------
-    |
-    | This table keeps track of all the migrations that have already run for
-    | your application. Using this information, we can determine which of
-    | the migrations on disk have not actually been run in the database.
-    |
     */
 
     'migrations' => 'migrations',
@@ -110,11 +93,6 @@ return [
     |--------------------------------------------------------------------------
     | Redis Databases
     |--------------------------------------------------------------------------
-    |
-    | Redis is an open-source, fast, and advanced key-value store that also
-    | provides a richer set of commands than a typical key-value system
-    | such as APCu or Memcached. Laravel makes it easy to dig right in.
-    |
     */
 
     'redis' => [
@@ -123,10 +101,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env(
-                'REDIS_PREFIX',
-                Str::slug(env('APP_NAME', 'laravel'), '_') . '_database_'
-            ),
+            'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),
         ],
 
         'default' => [
