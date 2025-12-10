@@ -1,5 +1,5 @@
-# Use official PHP image
-FROM php:8.2-fpm
+# Use official PHP 8.4 image (matches your composer.lock requirements)
+FROM php:8.4-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,15 +24,15 @@ WORKDIR /var/www
 # Copy Laravel project
 COPY . .
 
-# Install PHP dependencies
+# Install PHP dependencies (from composer.lock)
 RUN composer install --no-dev --optimize-autoloader
 
-# Optimize Laravel
+# Optimize Laravel (don't fail build if artisan can't run yet)
 RUN php artisan config:cache || true
 RUN php artisan route:cache || true
 
 # Expose port
 EXPOSE 8000
 
-# Start server
+# Start Laravel development server
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
