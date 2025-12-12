@@ -109,4 +109,27 @@ class LostItemController extends Controller
 
         return response()->json(['message' => 'Deleted']);
     }
+
+    public function markAsFound(Request $request, \App\Models\LostItem $lostItem)
+    {
+        // validate image
+        $validated = $request->validate([
+            'found_image' => 'required|image|max:2048', // 2 MB
+        ]);
+
+        // store image in public disk (storage/app/public/lost_items)
+        $path = $request->file('found_image')->store('lost_items', 'public');
+
+        // update item
+        $lostItem->status = 'found';
+        $lostItem->found_image_path = $path;
+        $lostItem->save();
+
+        // return updated item (you can wrap in a Resource if you use one)
+        return response()->json([
+            'message' => 'Item marked as found.',
+            'data'    => $lostItem,
+        ]);
+    }
+
 }
