@@ -7,9 +7,9 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
+        'https://lost-and-found-frontend-omega.vercel.app',
         'http://localhost:5173',
         'http://127.0.0.1:5173',
-        'https://lost-and-found-frontend-omega.vercel.app',
     ],
 
     'allowed_origins_patterns' => [],
@@ -20,6 +20,6 @@ return [
 
     'max_age' => 0,
 
+    // You're using Bearer token auth (not cookie auth), so keep this false
     'supports_credentials' => false,
-
 ];
