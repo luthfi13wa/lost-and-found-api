@@ -13,7 +13,6 @@ class LostItemController extends Controller
      */
     public function index()
     {
-        // You can add pagination later if you want
         return LostItem::orderByDesc('created_at')->get();
     }
 
@@ -29,7 +28,11 @@ class LostItemController extends Controller
             'date_lost'   => 'required|date',
             'contact'     => 'required|string|max:255',
             'status'      => 'nullable|in:lost,found',
-            'image'       => 'nullable|image|max:2048', // main item photo
+
+            // accept all possible image keys from frontend
+            'photo'      => 'nullable|image|max:10240',
+            'image'      => 'nullable|image|max:10240',
+            'item_photo' => 'nullable|image|max:10240',
         ]);
 
         $validated['status'] = $validated['status'] ?? 'lost';
@@ -38,10 +41,18 @@ class LostItemController extends Controller
             $validated['user_id'] = auth()->id();
         }
 
-        if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('lost_items', 'public');
+        // pick whichever file key exists
+        $file = $request->file('image')
+            ?? $request->file('photo')
+            ?? $request->file('item_photo');
+
+        if ($file) {
+            $path = $file->store('lost_items', 'public');
             $validated['image_path'] = $path;
         }
+
+        // IMPORTANT: don't try to insert these into DB columns
+        unset($validated['photo'], $validated['image'], $validated['item_photo']);
 
         $item = LostItem::create($validated);
 
@@ -58,27 +69,20 @@ class LostItemController extends Controller
 
     /**
      * Update the specified resource in storage.
-     *
-     * Used for:
-     * - updating status (lost → found)
-     * - uploading found proof photo
-     * - or editing details (optional)
      */
     public function update(Request $request, LostItem $lostItem)
     {
         $validated = $request->validate([
-            'title'            => 'sometimes|string|max:255',
-            'description'      => 'sometimes|string',
-            'location'         => 'sometimes|string|max:255',
-            'date_lost'        => 'sometimes|date',
-            'contact'          => 'sometimes|string|max:255',
-            'status'           => 'sometimes|in:lost,found',
-            'found_image'      => 'sometimes|image|max:2048', // proof image
+            'title'       => 'sometimes|string|max:255',
+            'description' => 'sometimes|string',
+            'location'    => 'sometimes|string|max:255',
+            'date_lost'   => 'sometimes|date',
+            'contact'     => 'sometimes|string|max:255',
+            'status'      => 'sometimes|in:lost,found',
+            'found_image' => 'sometimes|image|max:2048', // proof image
         ]);
 
-        // Handle found proof image upload
         if ($request->hasFile('found_image')) {
-            // Optionally delete old proof image
             if ($lostItem->found_image_path) {
                 Storage::disk('public')->delete($lostItem->found_image_path);
             }
@@ -86,6 +90,8 @@ class LostItemController extends Controller
             $path = $request->file('found_image')->store('found_items', 'public');
             $validated['found_image_path'] = $path;
         }
+
+        unset($validated['found_image']);
 
         $lostItem->update($validated);
 
@@ -97,7 +103,6 @@ class LostItemController extends Controller
      */
     public function destroy(LostItem $lostItem)
     {
-        // Delete images from storage too (optional but nice)
         if ($lostItem->image_path) {
             Storage::disk('public')->delete($lostItem->image_path);
         }
@@ -110,26 +115,22 @@ class LostItemController extends Controller
         return response()->json(['message' => 'Deleted']);
     }
 
-    public function markAsFound(Request $request, \App\Models\LostItem $lostItem)
+    public function markAsFound(Request $request, LostItem $lostItem)
     {
-        // validate image
-        $validated = $request->validate([
-            'found_image' => 'required|image|max:2048', // 2 MB
+        $request->validate([
+            'found_image' => 'required|image|max:2048',
         ]);
 
-        // store image in public disk (storage/app/public/lost_items)
-        $path = $request->file('found_image')->store('lost_items', 'public');
+        // store image in public disk
+        $path = $request->file('found_image')->store('found_items', 'public');
 
-        // update item
         $lostItem->status = 'found';
         $lostItem->found_image_path = $path;
         $lostItem->save();
 
-        // return updated item (you can wrap in a Resource if you use one)
         return response()->json([
             'message' => 'Item marked as found.',
             'data'    => $lostItem,
         ]);
     }
-
 }
