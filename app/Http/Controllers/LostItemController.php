@@ -5,20 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\LostItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class LostItemController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    private function normalizePath(?string $path): ?string
     {
-        return LostItem::orderByDesc('created_at')->get();
+        if (!$path) return null;
+        return str_replace('\\', '/', $path);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
+    public function index()
+    {
+        $items = LostItem::orderByDesc('created_at')->get();
+
+        return response()->json($items);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -29,7 +32,6 @@ class LostItemController extends Controller
             'contact'     => 'required|string|max:255',
             'status'      => 'nullable|in:lost,found',
 
-            // accept all possible image keys from frontend
             'photo'      => 'nullable|image|max:10240',
             'image'      => 'nullable|image|max:10240',
             'item_photo' => 'nullable|image|max:10240',
@@ -41,35 +43,31 @@ class LostItemController extends Controller
             $validated['user_id'] = auth()->id();
         }
 
-        // pick whichever file key exists
-        $file = $request->file('image')
-            ?? $request->file('photo')
-            ?? $request->file('item_photo');
+        $file =
+            $request->file('image') ??
+            $request->file('photo') ??
+            $request->file('item_photo');
 
+        // ===== Cloudinary upload (LOST ITEM PHOTO) =====
         if ($file) {
-            $path = $file->store('lost_items', 'public');
-            $validated['image_path'] = $path;
-        }
+            $upload = Cloudinary::upload(
+                $file->getRealPath(),
+                ['folder' => 'lost_and_found/lost_items']
+            );
 
-        // IMPORTANT: don't try to insert these into DB columns
-        unset($validated['photo'], $validated['image'], $validated['item_photo']);
+            $validated['image_url'] = $upload->getSecurePath();
+        }
 
         $item = LostItem::create($validated);
 
         return response()->json($item, 201);
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(LostItem $lostItem)
     {
         return response()->json($lostItem);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, LostItem $lostItem)
     {
         $validated = $request->validate([
@@ -79,58 +77,48 @@ class LostItemController extends Controller
             'date_lost'   => 'sometimes|date',
             'contact'     => 'sometimes|string|max:255',
             'status'      => 'sometimes|in:lost,found',
-            'found_image' => 'sometimes|image|max:2048', // proof image
+            'found_image' => 'sometimes|image|max:10240',
         ]);
 
+        // ===== Cloudinary upload (FOUND PROOF PHOTO) =====
         if ($request->hasFile('found_image')) {
-            if ($lostItem->found_image_path) {
-                Storage::disk('public')->delete($lostItem->found_image_path);
-            }
+            $upload = Cloudinary::upload(
+                $request->file('found_image')->getRealPath(),
+                ['folder' => 'lost_and_found/found_proofs']
+            );
 
-            $path = $request->file('found_image')->store('found_items', 'public');
-            $validated['found_image_path'] = $path;
+            $validated['found_image_url'] = $upload->getSecurePath();
         }
-
-        unset($validated['found_image']);
 
         $lostItem->update($validated);
 
         return response()->json($lostItem);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(LostItem $lostItem)
-    {
-        if ($lostItem->image_path) {
-            Storage::disk('public')->delete($lostItem->image_path);
-        }
-        if ($lostItem->found_image_path) {
-            Storage::disk('public')->delete($lostItem->found_image_path);
-        }
-
-        $lostItem->delete();
-
-        return response()->json(['message' => 'Deleted']);
-    }
-
     public function markAsFound(Request $request, LostItem $lostItem)
     {
         $request->validate([
-            'found_image' => 'required|image|max:2048',
+            'found_image' => 'required|image|max:10240',
         ]);
 
-        // store image in public disk
-        $path = $request->file('found_image')->store('found_items', 'public');
+        $upload = Cloudinary::upload(
+            $request->file('found_image')->getRealPath(),
+            ['folder' => 'lost_and_found/found_proofs']
+        );
 
         $lostItem->status = 'found';
-        $lostItem->found_image_path = $path;
+        $lostItem->found_image_url = $upload->getSecurePath();
         $lostItem->save();
 
         return response()->json([
             'message' => 'Item marked as found.',
-            'data'    => $lostItem,
+            'data' => $lostItem,
         ]);
+    }
+
+    public function destroy(LostItem $lostItem)
+    {
+        $lostItem->delete();
+        return response()->json(['message' => 'Deleted']);
     }
 }

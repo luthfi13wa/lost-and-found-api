@@ -136,3 +136,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Mark item as found + upload proof
     Route::post('/items/{lostItem}/found', [LostItemController::class, 'markAsFound']);
 });
+
+Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
+    return response()->json([
+        'id' => $request->user()->id,
+        'email' => $request->user()->email,
+    ]);
+});
