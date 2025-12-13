@@ -73,6 +73,7 @@ class LostItemController extends Controller
 
                 $uploaded = Cloudinary::upload($file->getPathname(), [
                     'folder' => 'lost_items',
+                    'resource_type' => 'auto',
                 ]);
 
                 $validated['image_url']  = $uploaded->getSecurePath();
@@ -186,6 +187,7 @@ class LostItemController extends Controller
 
             $uploaded = Cloudinary::upload($file->getPathname(), [
                 'folder' => 'found_items',
+                'resource_type' => 'auto',
             ]);
 
             $lostItem->status = 'found';
