@@ -9,11 +9,11 @@ return new class extends Migration {
     {
         Schema::table('lost_items', function (Blueprint $table) {
             if (!Schema::hasColumn('lost_items', 'image_url')) {
-                $table->text('image_url')->nullable()->after('image_path');
+                $table->string('image_url')->nullable()->after('image_path');
             }
 
             if (!Schema::hasColumn('lost_items', 'found_image_url')) {
-                $table->text('found_image_url')->nullable()->after('found_image_path');
+                $table->string('found_image_url')->nullable()->after('found_image_path');
             }
         });
     }

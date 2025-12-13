@@ -19,5 +19,7 @@ class LostItem extends Model
         'status',
         'image_path',       // original lost-item photo
         'found_image_path', // proof photo when found
+        'image_url',        // Cloudinary URL
+        'found_image_url',   // Cloudinary URL for found proof
     ];
 }

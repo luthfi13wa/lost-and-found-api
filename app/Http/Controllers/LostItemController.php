@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\LostItem;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
+use Illuminate\Support\Facades\Log;
 
 class LostItemController extends Controller
 {
@@ -17,9 +17,14 @@ class LostItemController extends Controller
 
     public function index()
     {
-        $items = LostItem::orderByDesc('created_at')->get();
+        return response()->json(
+            LostItem::orderByDesc('created_at')->get()
+        );
+    }
 
-        return response()->json($items);
+    public function show(LostItem $lostItem)
+    {
+        return response()->json($lostItem);
     }
 
     public function store(Request $request)
@@ -48,24 +53,51 @@ class LostItemController extends Controller
             $request->file('photo') ??
             $request->file('item_photo');
 
-        // ===== Cloudinary upload (LOST ITEM PHOTO) =====
-        if ($file) {
-            $upload = Cloudinary::upload(
-                $file->getRealPath(),
-                ['folder' => 'lost_and_found/lost_items']
-            );
+        // Default
+        $validated['image_url']  = null;
+        $validated['image_path'] = null;
 
-            $validated['image_url'] = $upload->getSecurePath();
+        if ($file) {
+            try {
+                if (!$file->isValid()) {
+                    Log::error('Upload not valid', [
+                        'error' => $file->getError(),
+                        'name'  => $file->getClientOriginalName(),
+                        'size'  => $file->getSize(),
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Upload failed before Cloudinary (file invalid). Try a smaller image.',
+                    ], 422);
+                }
+
+                $uploaded = Cloudinary::upload($file->getPathname(), [
+                    'folder' => 'lost_items',
+                ]);
+
+                $validated['image_url']  = $uploaded->getSecurePath();
+                $validated['image_path'] = $this->normalizePath($uploaded->getPublicId()); // optional
+            } catch (\Throwable $e) {
+                Log::error('Cloudinary upload failed (store)', [
+                    'message' => $e->getMessage(),
+                    'class'   => get_class($e),
+                    'trace'   => $e->getTraceAsString(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Cloudinary upload failed. Check Railway logs for details.',
+                    'error'   => $e->getMessage(),
+                ], 500);
+            }
         }
 
         $item = LostItem::create($validated);
 
-        return response()->json($item, 201);
-    }
+        // normalize any paths for consistency
+        $item->image_path = $this->normalizePath($item->image_path);
+        $item->found_image_path = $this->normalizePath($item->found_image_path);
 
-    public function show(LostItem $lostItem)
-    {
-        return response()->json($lostItem);
+        return response()->json($item, 201);
     }
 
     public function update(Request $request, LostItem $lostItem)
@@ -80,19 +112,55 @@ class LostItemController extends Controller
             'found_image' => 'sometimes|image|max:10240',
         ]);
 
-        // ===== Cloudinary upload (FOUND PROOF PHOTO) =====
         if ($request->hasFile('found_image')) {
-            $upload = Cloudinary::upload(
-                $request->file('found_image')->getRealPath(),
-                ['folder' => 'lost_and_found/found_proofs']
-            );
+            $file = $request->file('found_image');
 
-            $validated['found_image_url'] = $upload->getSecurePath();
+            try {
+                if (!$file->isValid()) {
+                    Log::error('Found upload not valid (update)', [
+                        'error' => $file->getError(),
+                        'name'  => $file->getClientOriginalName(),
+                        'size'  => $file->getSize(),
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Proof upload failed (file invalid). Try a smaller image.',
+                    ], 422);
+                }
+
+                $uploaded = Cloudinary::upload($file->getPathname(), [
+                    'folder' => 'found_items',
+                ]);
+
+                $validated['found_image_url']  = $uploaded->getSecurePath();
+                $validated['found_image_path'] = $this->normalizePath($uploaded->getPublicId());
+                $validated['status'] = 'found';
+            } catch (\Throwable $e) {
+                Log::error('Cloudinary upload failed (update)', [
+                    'message' => $e->getMessage(),
+                    'class'   => get_class($e),
+                    'trace'   => $e->getTraceAsString(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Cloudinary proof upload failed. Check logs.',
+                    'error'   => $e->getMessage(),
+                ], 500);
+            }
         }
 
         $lostItem->update($validated);
 
+        $lostItem->image_path = $this->normalizePath($lostItem->image_path);
+        $lostItem->found_image_path = $this->normalizePath($lostItem->found_image_path);
+
         return response()->json($lostItem);
+    }
+
+    public function destroy(LostItem $lostItem)
+    {
+        $lostItem->delete();
+        return response()->json(['message' => 'Deleted']);
     }
 
     public function markAsFound(Request $request, LostItem $lostItem)
@@ -101,24 +169,48 @@ class LostItemController extends Controller
             'found_image' => 'required|image|max:10240',
         ]);
 
-        $upload = Cloudinary::upload(
-            $request->file('found_image')->getRealPath(),
-            ['folder' => 'lost_and_found/found_proofs']
-        );
+        $file = $request->file('found_image');
 
-        $lostItem->status = 'found';
-        $lostItem->found_image_url = $upload->getSecurePath();
-        $lostItem->save();
+        try {
+            if (!$file->isValid()) {
+                Log::error('Found upload not valid (markAsFound)', [
+                    'error' => $file->getError(),
+                    'name'  => $file->getClientOriginalName(),
+                    'size'  => $file->getSize(),
+                ]);
 
-        return response()->json([
-            'message' => 'Item marked as found.',
-            'data' => $lostItem,
-        ]);
-    }
+                return response()->json([
+                    'message' => 'Proof upload failed (file invalid). Try a smaller image.',
+                ], 422);
+            }
 
-    public function destroy(LostItem $lostItem)
-    {
-        $lostItem->delete();
-        return response()->json(['message' => 'Deleted']);
+            $uploaded = Cloudinary::upload($file->getPathname(), [
+                'folder' => 'found_items',
+            ]);
+
+            $lostItem->status = 'found';
+            $lostItem->found_image_url = $uploaded->getSecurePath();
+            $lostItem->found_image_path = $this->normalizePath($uploaded->getPublicId());
+            $lostItem->save();
+
+            $lostItem->image_path = $this->normalizePath($lostItem->image_path);
+            $lostItem->found_image_path = $this->normalizePath($lostItem->found_image_path);
+
+            return response()->json([
+                'message' => 'Item marked as found.',
+                'data' => $lostItem,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Cloudinary found_image upload failed (markAsFound)', [
+                'message' => $e->getMessage(),
+                'class'   => get_class($e),
+                'trace'   => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Cloudinary proof upload failed. Check logs.',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 }
