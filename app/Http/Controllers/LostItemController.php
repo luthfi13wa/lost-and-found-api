@@ -20,18 +20,21 @@ class LostItemController extends Controller
         return is_string($v) && preg_match('/^https?:\/\//i', $v) === 1;
     }
 
-    /**
-     * Upload file to Cloudinary safely using official SDK
-     */
     private function uploadToCloudinary(\Illuminate\Http\UploadedFile $file, string $folder): array
     {
         if (!$file->isValid()) {
             throw new \RuntimeException('Uploaded file is not valid.');
         }
 
+        $path = $file->getPathname();
+
+        if (!is_string($path) || $path === '' || !file_exists($path)) {
+            throw new \RuntimeException('Upload temp file missing or empty on server.');
+        }
+
         $uploader = new UploadApi();
 
-        $result = $uploader->upload($file->getPathname(), [
+        $result = $uploader->upload($path, [
             'folder'        => $folder,
             'resource_type' => 'auto',
         ]);
@@ -40,7 +43,7 @@ class LostItemController extends Controller
         $publicId  = $result['public_id'] ?? null;
 
         if (!$secureUrl || !$this->isHttpUrl($secureUrl)) {
-            throw new \RuntimeException('Cloudinary upload did not return a secure URL.');
+            throw new \RuntimeException('Cloudinary upload did not return a secure_url.');
         }
 
         return [
@@ -51,9 +54,9 @@ class LostItemController extends Controller
 
     public function index()
     {
-        return response()->json(
-            LostItem::orderByDesc('created_at')->get()
-        );
+        return response()->json([
+            'data' => LostItem::orderByDesc('created_at')->get(),
+        ]);
     }
 
     public function show(LostItem $lostItem)
@@ -70,11 +73,9 @@ class LostItemController extends Controller
             'date_lost'   => 'required|date',
             'contact'     => 'required|string|max:255',
             'status'      => 'nullable|in:lost,found',
-
-            // frontend sends ONE of these
-            'photo'      => 'nullable|image|max:10240',
-            'image'      => 'nullable|image|max:10240',
-            'item_photo' => 'nullable|image|max:10240',
+            'photo'       => 'nullable|image|max:10240',
+            'image'       => 'nullable|image|max:10240',
+            'item_photo'  => 'nullable|image|max:10240',
         ]);
 
         $validated['status'] = $validated['status'] ?? 'lost';
@@ -96,10 +97,11 @@ class LostItemController extends Controller
                 $uploaded = $this->uploadToCloudinary($file, 'lost_items');
 
                 $validated['image_url']  = $uploaded['secure_url'];
-                $validated['image_path'] = $this->normalizePath($uploaded['public_id']);
+                $validated['image_path'] = $uploaded['secure_url']; // ✅ backward compatible
             } catch (\Throwable $e) {
                 Log::error('Cloudinary upload failed (store)', [
                     'message' => $e->getMessage(),
+                    'class'   => get_class($e),
                     'trace'   => $e->getTraceAsString(),
                 ]);
 
@@ -129,17 +131,15 @@ class LostItemController extends Controller
 
         if ($request->hasFile('found_image')) {
             try {
-                $uploaded = $this->uploadToCloudinary(
-                    $request->file('found_image'),
-                    'found_items'
-                );
+                $uploaded = $this->uploadToCloudinary($request->file('found_image'), 'found_items');
 
                 $validated['found_image_url']  = $uploaded['secure_url'];
-                $validated['found_image_path'] = $this->normalizePath($uploaded['public_id']);
+                $validated['found_image_path'] = $uploaded['secure_url']; // ✅ backward compatible
                 $validated['status'] = 'found';
             } catch (\Throwable $e) {
                 Log::error('Cloudinary upload failed (update)', [
                     'message' => $e->getMessage(),
+                    'class'   => get_class($e),
                     'trace'   => $e->getTraceAsString(),
                 ]);
 
@@ -168,14 +168,11 @@ class LostItemController extends Controller
         ]);
 
         try {
-            $uploaded = $this->uploadToCloudinary(
-                $request->file('found_image'),
-                'found_items'
-            );
+            $uploaded = $this->uploadToCloudinary($request->file('found_image'), 'found_items');
 
             $lostItem->status = 'found';
             $lostItem->found_image_url  = $uploaded['secure_url'];
-            $lostItem->found_image_path = $this->normalizePath($uploaded['public_id']);
+            $lostItem->found_image_path = $uploaded['secure_url']; // ✅ backward compatible
             $lostItem->save();
 
             return response()->json([
@@ -185,6 +182,7 @@ class LostItemController extends Controller
         } catch (\Throwable $e) {
             Log::error('Cloudinary upload failed (markAsFound)', [
                 'message' => $e->getMessage(),
+                'class'   => get_class($e),
                 'trace'   => $e->getTraceAsString(),
             ]);
 
